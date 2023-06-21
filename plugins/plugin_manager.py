@@ -38,6 +38,7 @@ class PluginManager:
 
     def emit_event(self, e_context: EventContext, *args, **kwargs):
         for plugin in self.plugin_registry.list_plugins():
+            print(f"{plugin.name}: {plugin.enabled}: {e_context.event} : {e_context.action}")
             if plugin.enabled and e_context.action == EventAction.CONTINUE:
                 if(e_context.event in plugin.handlers):
                     plugin.handlers[e_context.event](e_context, *args, **kwargs)

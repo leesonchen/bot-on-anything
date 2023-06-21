@@ -43,6 +43,7 @@ class ChatGPTModel(Model):
             return reply_content
 
         elif context.get('type', None) == 'IMAGE_CREATE':
+            log.info("[CHATGPT] image query={}".format(query))
             return self.create_img(query, 0)
 
     def reply_text(self, query, user_id, retry_count=0):
