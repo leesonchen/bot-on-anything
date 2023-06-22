@@ -21,11 +21,34 @@ def handle_text(msg):
 @robot.voice
 def handle_voice(msg):
     logger.info(f'[WX_Public] receive public voice msg: {msg.recognition}, userId: {msg.source}, type: {msg.__type__}, mediaId:{msg.media_id}, format:{msg.format}')
-    msg.content = None
+    msg.content = msg.recognition
     return WechatServiceAccount().handle(msg)
 
 class WechatServiceAccount(Channel):
     wait_response = False
+    voice_map = {}
+    langList = ''
+
+    def isSensitive(self, text):
+        with open('sensitive_words.txt', 'r', encoding='utf-8') as f: #加入检测违规词
+            sensitive_words = [line.strip() for line in f.readlines()]
+            found = False
+            for word in sensitive_words:
+                if word != '' and word in text:
+                    found = True
+                    break
+            return found
+
+    def readVoicename(self):
+        with open('voice_name.txt', 'r', encoding='utf-8') as f:
+            voice_name = [line.strip() for line in f.readlines()]
+            for name in voice_name:
+                nameSplits = name.split('-')
+                lang = nameSplits[0] + '-' + nameSplits[1]
+                self.voice_map[lang] = nameSplits[2]
+                self.langList = self.langList + lang + ' '
+
+        logger.info(f'langList: {self.langList}')
 
     def startup(self):
         logger.info('[WX_Public] Wechat Public account service start!')
@@ -36,6 +59,9 @@ class WechatServiceAccount(Channel):
         robot.run()
 
     def handle(self, msg, count=0):
+        if self.isSensitive(msg.content):
+            return "抱歉该话题不适合讨论"
+
         context = {}
         context['from_user_id'] = msg.source
         context['msg_type'] = msg.__type__
@@ -70,14 +96,44 @@ class WechatServiceAccount(Channel):
         print(f"upload_res: {upload_res}, media_id: {media_id}")
         client.send_image_message(user_id, media_id)
 
-    def make_voice_reply(self, client, reply_text, user_id, with_text=True):
+    def suitableVoice(self, text):
+        self.readVoicename()
+
+        from model.openai.chatgpt_model import ChatGPTModel
+        robot = ChatGPTModel()
+        query = f"considering {self.langList}, which of the above language code can be best described for the following text :{text}"
+        print(f"query: {query}")
+        if len(query) > 1000:
+            query = query[:1000]
+
+        session = []
+        user_item = {'role': 'user', 'content': query}
+        session.append(user_item)
+
+        rep = robot.reply_text(session)
+        print(f"rep: {rep}")
+
+        for lang in self.voice_map:
+            if lang in rep:
+                return lang + '-' + self.voice_map[lang]
+
+        return 'zh-CN-XiaoxiaoNeural'
+
+    def make_voice_reply(self, client, reply_text, user_id, voice='zh-CN-XiaoxiaoNeural', rate='-0%', volume='+0%', advancedMode=True, with_text=True):
+        #voice = 'zh-CN-YunxiNeural'
+        #voice = 'zh-CN-XiaoyiNeural'
+
+        if advancedMode:
+            voice = self.suitableVoice(reply_text)
+            print(f"voice: {voice}")
+
         seperateNum = 300
         while len(reply_text) > 0:
             # if len(reply_text) > 300:
             current_text = reply_text[:seperateNum]
             reply_text = reply_text[seperateNum:]
             try:
-                self.make_single_voice_reply(client, current_text, user_id, with_text)
+                self.make_single_voice_reply(client, current_text, user_id, voice, rate, volume, with_text)
             except Exception as e:
                 logger.warn(f'[WX_Public] make_voice_reply error: {e}')
                 errstr = str(e)
@@ -88,12 +144,7 @@ class WechatServiceAccount(Channel):
                     raise e
 
     # 单段语音输出
-    def make_single_voice_reply(self, client, reply_text, user_id, with_text=True):
-        #voice = 'zh-CN-YunxiNeural'
-        #voice = 'zh-CN-XiaoyiNeural'
-        voice = 'zh-CN-XiaoxiaoNeural'
-        rate = '-0%'
-        volume = '+0%'
+    def make_single_voice_reply(self, client, reply_text, user_id, voice='zh-CN-XiaoxiaoNeural', rate='-0%', volume='+0%', with_text=True):
         file_name = f"download/{user_id}_{int(time.time())}.mp3"
         asyncio.run(self.save_tts_file(voice, rate, volume, reply_text, file_name))
         file_obj = open(file_name, 'rb')

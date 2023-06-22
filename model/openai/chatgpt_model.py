@@ -46,7 +46,7 @@ class ChatGPTModel(Model):
             log.info("[CHATGPT] image query={}".format(query))
             return self.create_img(query, 0)
 
-    def reply_text(self, query, user_id, retry_count=0):
+    def reply_text(self, query, user_id=None, retry_count=0):
         try:
             response = openai.ChatCompletion.create(
                 model= model_conf(const.OPEN_AI).get("model") or "gpt-3.5-turbo",  # 对话模型的名称
@@ -61,7 +61,7 @@ class ChatGPTModel(Model):
             used_token = response['usage']['total_tokens']
             log.debug(response)
             log.info("[CHATGPT] reply={}", reply_content)
-            if reply_content:
+            if reply_content and user_id:
                 # save conversation
                 Session.save_session(query, reply_content, user_id, used_token)
             return response.choices[0]['message']['content']
@@ -83,6 +83,10 @@ class ChatGPTModel(Model):
             log.warn("[CHATGPT] Timeout")
             return "我没有收到消息，请稍后重试"
         except Exception as e:
+            errstr = str(e)
+            if "Your request was rejected" in errstr:
+                return "抱歉该话题不适合讨论"
+
             # unknown exception
             log.exception(e)
             Session.clear_session(user_id)
@@ -155,9 +159,9 @@ class ChatGPTModel(Model):
             if retry_count < 1:
                 time.sleep(5)
                 log.warn("[OPEN_AI] ImgCreate RateLimit exceed, 第{}次重试".format(retry_count+1))
-                return self.reply_text(query, retry_count+1)
+                return self.create_img(query, retry_count+1)
             else:
-                return "提问太快啦，请休息一下再问我吧"
+                return None
         except Exception as e:
             log.exception(e)
             return None
