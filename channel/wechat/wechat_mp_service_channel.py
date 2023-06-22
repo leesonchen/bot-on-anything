@@ -70,20 +70,40 @@ class WechatServiceAccount(Channel):
         print(f"upload_res: {upload_res}, media_id: {media_id}")
         client.send_image_message(user_id, media_id)
 
-    def make_voice_reply(self, client, reply_text, user_id):
-        file_name = f"download/{user_id}_{int(time.time())}.mp3"
+    def make_voice_reply(self, client, reply_text, user_id, with_text=True):
+        seperateNum = 300
+        while len(reply_text) > 0:
+            # if len(reply_text) > 300:
+            current_text = reply_text[:seperateNum]
+            reply_text = reply_text[seperateNum:]
+            try:
+                self.make_single_voice_reply(client, current_text, user_id, with_text)
+            except Exception as e:
+                logger.warn(f'[WX_Public] make_voice_reply error: {e}')
+                errstr = str(e)
+                if 'playtime' in errstr:
+                    seperateNum = seperateNum - 50
+                    reply_text = current_text + reply_text
+                else:
+                    raise e
+
+    # 单段语音输出
+    def make_single_voice_reply(self, client, reply_text, user_id, with_text=True):
         #voice = 'zh-CN-YunxiNeural'
         #voice = 'zh-CN-XiaoyiNeural'
-
         voice = 'zh-CN-XiaoxiaoNeural'
         rate = '-0%'
         volume = '+0%'
+        file_name = f"download/{user_id}_{int(time.time())}.mp3"
         asyncio.run(self.save_tts_file(voice, rate, volume, reply_text, file_name))
         file_obj = open(file_name, 'rb')
+
         upload_res = client.upload_media('voice', file_obj)
         media_id = upload_res['media_id']
         print(f"upload_res: {upload_res}, media_id: {media_id}")
         client.send_voice_message(user_id, media_id)
+        if with_text:
+            client.send_text_message(user_id, reply_text)
 
     def voice_to_text(self, client, msg):
         if msg.recognition is not None:
