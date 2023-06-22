@@ -8,3 +8,6 @@ requests
 discord.py>=2.0.0
 wechatpy
 cryptography
+werobot
+edge-tts
+pydub

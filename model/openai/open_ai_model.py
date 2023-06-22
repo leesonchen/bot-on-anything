@@ -174,6 +174,22 @@ class OpenAIModel(Model):
             log.exception(e)
             return None
 
+    def voice_recognition(self, audio_file, retry_count=0):
+        try:
+            transcript = openai.Audio.transcribe("whisper-1", audio_file)
+            return transcript
+        except openai.error.RateLimitError as e:
+            log.warn(e)
+            if retry_count < 1:
+                time.sleep(5)
+                log.warn("[OPEN_AI] RateLimit exceed, 第{}次重试".format(retry_count+1))
+                return self.voice_recognition(audio_file, retry_count+1)
+            else:
+                return None
+        except Exception as e:
+            import traceback
+            log.error(traceback.format_exc())
+            return None
 
 class Session(object):
     @staticmethod
