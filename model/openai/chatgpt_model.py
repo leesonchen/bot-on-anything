@@ -69,10 +69,11 @@ class ChatGPTModel(Model):
             # rate limit exception
             log.warn(e)
             if retry_count < 1:
-                time.sleep(5)
+                time.sleep(10)
                 log.warn("[CHATGPT] RateLimit exceed, 第{}次重试".format(retry_count+1))
                 return self.reply_text(query, user_id, retry_count+1)
             else:
+                time.sleep(30)
                 return "提问太快啦，请休息一下再问我吧"
         except openai.error.APIConnectionError as e:
             log.warn(e)
