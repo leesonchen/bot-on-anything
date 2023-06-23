@@ -12,7 +12,10 @@ user_session = dict()
 # OpenAI对话模型API (可用)
 class ChatGPTModel(Model):
     def __init__(self):
-        openai.api_key = model_conf(const.OPEN_AI).get('api_key')
+        keys = [model_conf(const.OPEN_AI).get('api_key'), model_conf(const.OPEN_AI).get('api_key2'), model_conf(const.OPEN_AI).get('api_key3')]
+        modelCount = user_session.get('modelCount', 0)
+        openai.api_key = keys[modelCount]
+        user_session['modelCount'] = (modelCount + 1) % len(keys)
         api_base = model_conf(const.OPEN_AI).get('api_base')
         if api_base:
             openai.api_base = api_base
@@ -32,7 +35,7 @@ class ChatGPTModel(Model):
                 return '记忆已清除'
 
             new_query = Session.build_session_query(query, from_user_id)
-            log.debug("[CHATGPT] session query={}".format(new_query))
+            log.info("[CHATGPT] session query={}".format(new_query))
 
             # if context.get('stream'):
             #     # reply in stream
@@ -68,8 +71,8 @@ class ChatGPTModel(Model):
         except openai.error.RateLimitError as e:
             # rate limit exception
             log.warn(e)
-            if retry_count < 1:
-                time.sleep(10)
+            if retry_count < 2:
+                time.sleep(20)
                 log.warn("[CHATGPT] RateLimit exceed, 第{}次重试".format(retry_count+1))
                 return self.reply_text(query, user_id, retry_count+1)
             else:

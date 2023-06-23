@@ -71,7 +71,7 @@ hu-HU-NoemiNeural
 id-ID-ArdiNeural
 is-IS-GudrunNeural
 it-IT-DiegoNeural
-ja-JP-KeitaNeural
+ja-JP-NanamiNeural
 jv-ID-DimasNeural
 ka-GE-EkaNeural
 kk-KZ-AigulNeural
