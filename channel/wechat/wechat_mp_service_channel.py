@@ -12,7 +12,7 @@ import string
 import threading
 
 robot = werobot.WeRoBot(token=channel_conf(const.WECHAT_MP).get('token'))
-thread_pool = ThreadPoolExecutor(max_workers=1)
+thread_pool = ThreadPoolExecutor(max_workers=2)
 voice_map = {}
 langList = ''
 zh_punctuation_str = '《》【】（）。、‘’“”：；！？·，'   #中文符号
