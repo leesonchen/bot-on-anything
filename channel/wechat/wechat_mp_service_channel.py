@@ -494,6 +494,12 @@ class WechatServiceAccount(Channel):
                     return
                 # client.send_text_message(context['from_user_id'], f"[听到：{query}]")
 
+            if query.startswith("请朗读"):
+                query = query[3:].strip()
+                self.make_voice_reply(client, query, context['from_user_id'], with_text=False)
+                self.wait_response = False
+                return
+
             if query.startswith("画"):
                 context['type'] = 'IMAGE_CREATE'
                 # query = query[1:].strip()
