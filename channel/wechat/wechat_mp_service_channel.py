@@ -12,7 +12,7 @@ import string
 import threading
 
 robot = werobot.WeRoBot(token=channel_conf(const.WECHAT_MP).get('token'))
-thread_pool = ThreadPoolExecutor(max_workers=2)
+thread_pool = ThreadPoolExecutor(max_workers=8)
 voice_map = {}
 langList = ''
 zh_punctuation_str = '《》【】（）。、‘’“”：；！？·，'   #中文符号
@@ -29,6 +29,30 @@ def handle_voice(msg):
     logger.info(f'[WX_Public] receive public voice msg: {msg.recognition}, userId: {msg.source}, type: {msg.__type__}, mediaId:{msg.media_id}, format:{msg.format}')
     msg.content = msg.recognition
     return WechatServiceAccount().handle(msg)
+
+@robot.subscribe
+def handle_subscribe(msg):
+    logger.info(f'[WX_Public] receive public subscribe msg: {msg}, userId: {msg.source}, type: {msg.__type__}')
+    # return f"{msg.target}:{msg.source}, 终于等到你！欢迎关注~"
+    return "终于等到你！欢迎关注~"
+
+@robot.unsubscribe
+def handle_unsubscribe(msg):
+    logger.info(f'[WX_Public] receive public unsubscribe msg: {msg}, userId: {msg.source}, type: {msg.__type__}')
+    return "青山不改，绿水长流。后会有期【抱拳】~"
+
+
+# @robot.key_click("V1001_AI_CHAT")
+# def handle_menu_ai_chat(msg):
+#     logger.info(f'[WX_Public] receive handle_menu_click target: {msg.target}, source: {msg.source}, key:{msg.key}, type: {msg.__type__}')
+#     res = robot.client.delete_menu()
+#     logger.info(f'[WX_Public] delete menu res: {res}')
+#     return f"{msg.source} 点击了: {msg.key}"
+
+# @robot.click
+# def handle_menu_click(msg):
+#     logger.info(f'[WX_Public] receive handle_menu_click target: {msg.target}, source: {msg.source}, key:{msg.key}, type: {msg.__type__}')
+#     return f"你点击了: {msg.key}"
 
 def is_Chinese(text):
     # 增加对中英混合的情况，如果大部分内容都是中文，则认为是中文
@@ -116,6 +140,51 @@ class WechatServiceAccount(Channel):
 
         logger.info(f'langList: {langList}')
 
+    def createMenu(self):
+        res = robot.client.create_menu({
+                        "button":[
+                            {
+                                "type":"click",
+                                "name":"AI助手",
+                                "key":"V1001_AI_CHAT"
+                            },
+                            {
+                                "name":"口语练习",
+                                "sub_button":[
+                                    {
+                                        "type":"click",
+                                        "name":"英语对话",
+                                        "key":"V2001_ENGLISH"
+                                    },
+                                    {
+                                        "type":"click",
+                                        "name":"韩语对话",
+                                        "key":"V2002_KOREAN"
+                                    }
+                                ]
+                            },
+                            {
+                                "name":"我的",
+                                "sub_button":[
+                                    {
+                                        "type":"click",
+                                        "name":"每日签到",
+                                        "key":"V3001_CHECKIN"
+                                    },
+                                    {
+                                        "type":"click",
+                                        "name":"我的积分",
+                                        "key":"V3002_ACCOUNT"
+                                    },
+                                    {
+                                        "type":"click",
+                                        "name":"赞一下我们",
+                                        "key":"V3003_GOOD"
+                                    }
+                                ]
+                            }
+                        ]})
+
     def startup(self):
         logger.info('[WX_Public] Wechat Public account service start!')
         robot.config['PORT'] = channel_conf(const.WECHAT_MP).get('port')
@@ -123,6 +192,7 @@ class WechatServiceAccount(Channel):
         robot.config["APP_SECRET"] = channel_conf(const.WECHAT_MP).get('app_secret')
         robot.config['HOST'] = '0.0.0.0'
         self.readVoicename()
+        # self.createMenu()
         robot.run()
 
     def handle(self, msg, count=0):
@@ -137,9 +207,9 @@ class WechatServiceAccount(Channel):
         thread_pool.submit(self._do_send, msg.content, context)
 
         # wait 4 seconds
-        while self.wait_response and count < 3:
+        while self.wait_response and count < 9:
             # sleep one second
-            time.sleep(1)
+            time.sleep(0.5)
             count += 1
             print('waiting count: {}'.format(count))
 
@@ -163,17 +233,27 @@ class WechatServiceAccount(Channel):
         print(f"upload_res: {upload_res}, media_id: {media_id}")
         client.send_image_message(user_id, media_id)
 
+    # search keyword in voice_map
+    def searchVoice(self, keyword):
+        global voice_map
+        for key in voice_map.keys():
+            if keyword in key:
+                voice = key + '-' + voice_map[key]
+                return voice
+        return None
+
     def suitableVoice(self, text):
         if is_Japanese(text):
-            voice = 'ja-JP-NanamiNeural'
+            voice =  self.searchVoice('ja-JP')
             print(f"voice: {voice}")
             return voice
         elif is_Chinese(text):
-            voice = 'zh-CN-XiaoxiaoNeural'
+            voice =  self.searchVoice('zh-CN')
             print(f"voice: {voice}")
             return voice
         elif is_English(text):
-            voice = 'en-US-AnaNeural'
+            # voice = 'en-US-AnaNeural'
+            voice =  self.searchVoice('en-US')
             print(f"voice: {voice}")
             return voice
 
@@ -181,7 +261,7 @@ class WechatServiceAccount(Channel):
 
         from model.openai.chatgpt_model import ChatGPTModel
         robot = ChatGPTModel()
-        query = f"considering {langList}, which of the above language code can be best described for the following text,be :{text}"
+        query = f"considering {langList}, which of the above language code can be best described for the following text:{text}"
         print(f"query: {query}")
         if len(query) > 1000:
             query = query[:1000]
@@ -223,14 +303,18 @@ class WechatServiceAccount(Channel):
             return True
         return False
 
-    def make_voice_reply(self, client, reply_text, user_id, voice='zh-CN-XiaoxiaoNeural', rate='-0%', volume='+0%', with_text=True, seperateNum = 280):
-        #voice = 'zh-CN-YunxiNeural'
-        #voice = 'zh-CN-XiaoyiNeural'
+    def isEnglishVoice(self, voice):
+        if (voice is not None) and ('en-' in voice):
+            return True
+        return False
 
-        # voice = self.suitableVoice(reply_text)
-        voice = None
+    def make_voice_reply(self, client, reply_text, user_id, voice='zh-CN-XiaoxiaoNeural', rate='-0%', volume='+0%', with_text=True, seperateNum = 280, advancedMode = False):
+        if advancedMode:
+            voice = None
+        else:
+            voice = self.suitableVoice(reply_text)
+
         orig_text = reply_text
-
         words, seperators = self.seperateText(reply_text)
 
         current_text = ''
@@ -243,7 +327,7 @@ class WechatServiceAccount(Channel):
                 maxLen = seperateNum
                 word = words[i].strip()
                 if is_English(word):
-                    maxLen = 2.5 * seperateNum
+                    maxLen = 2.2 * seperateNum
 
                 if i < len(seperators):
                     word = word + seperators[i]
@@ -255,22 +339,23 @@ class WechatServiceAccount(Channel):
                     continue
 
                 if currentLen + lword < maxLen:    # 1是分隔符
-                    # 判断中文状态是否发生变化
-                    if is_Chinese(word):
-                        if inChineseMode == None:
-                            inChineseMode = True
-                        elif inChineseMode == False:
-                            # 排除日文夹带汉字的情况
-                            if (not self.isJapaneseVoice(voice)) or (seperators[i-1] in '：。！？:!?'):
-                                modeChanged = True
+                    if advancedMode:    # 高级模式需要处理多语言混杂情况
+                        # 判断中文状态是否发生变化
+                        if is_Chinese(word):
+                            if inChineseMode == None:
                                 inChineseMode = True
-                    else:
-                        if inChineseMode == None:
-                            inChineseMode = False
-                        elif inChineseMode == True:
-                            if (not is_English(word)) or (lword > 10):  # 中文里面夹着少量英文，直接忽略语言切换
-                                modeChanged = True
+                            elif inChineseMode == False:
+                                # 排除日文夹带汉字的情况
+                                if (not self.isJapaneseVoice(voice)) or (seperators[i-1] in '：。！？:!?'):
+                                    modeChanged = True
+                                    inChineseMode = True
+                        else:
+                            if inChineseMode == None:
                                 inChineseMode = False
+                            elif inChineseMode == True:
+                                if (not is_English(word)) or (lword > 10):  # 中文里面夹着少量英文，直接忽略语言切换
+                                    modeChanged = True
+                                    inChineseMode = False
 
                     if modeChanged:
                         # 中文外文切换，先处理之前的内容
@@ -284,8 +369,6 @@ class WechatServiceAccount(Channel):
                     else:
                         currentLen = currentLen + lword # 1是空格
                         current_text = current_text + word
-
-                    # print(f"currentLen: {currentLen}")
 
                 else:   # 增加1个短词则超过字数
                     print(f"currentLen: {currentLen}; current word: {word}; maxLen: {maxLen}; voice:{voice}; inChineseMode:{inChineseMode}")
@@ -315,7 +398,7 @@ class WechatServiceAccount(Channel):
             errstr = str(e)
             if 'playtime' in errstr:    # 语音长度超过限制
                 logger.warn(f'playtime error, use: {seperateNum - 50}')
-                self.make_voice_reply(client, orig_text, user_id, voice, rate, volume, with_text, seperateNum - 50)
+                self.make_voice_reply(client, orig_text, user_id, voice, rate, volume, with_text, seperateNum - 50, advancedMode)
             else:
                 raise e
 
@@ -325,6 +408,8 @@ class WechatServiceAccount(Channel):
             voice = self.suitableVoice(reply_text)
 
         file_name = f"download/{user_id}_{int(time.time())}.mp3"
+        if self.isEnglishVoice(voice):
+            rate = '-20%'
         asyncio.run(self.save_tts_file(voice, rate, volume, reply_text, file_name))
         file_obj = open(file_name, 'rb')
 
@@ -356,7 +441,10 @@ class WechatServiceAccount(Channel):
         if with_text:
             client.send_text_message(user_id, reply_text)
 
-    def voice_to_text(self, client, msg):
+    def voice_to_text(self, client, msg, wechatModeOnly=False):
+        if wechatModeOnly:
+            return msg.recognition
+
         if msg.recognition is not None:
             return msg.recognition
         else:
@@ -404,16 +492,16 @@ class WechatServiceAccount(Channel):
                     client.send_text_message(context['from_user_id'], "抱歉我听不清楚，请用标准普通话再说一遍")
                     self.wait_response = False
                     return
-                client.send_text_message(context['from_user_id'], f"[听到：{query}]")
+                # client.send_text_message(context['from_user_id'], f"[听到：{query}]")
 
             if query.startswith("画"):
                 context['type'] = 'IMAGE_CREATE'
                 # query = query[1:].strip()
 
-            timer = None
-            if self.wait_response:
-                timer = threading.Timer(20, self.check_progress, args=(client, context['from_user_id']))
-                timer.start()
+            # timer = None
+            # if self.wait_response:
+            #     timer = threading.Timer(20, self.check_progress, args=(client, context['from_user_id']))
+            #     timer.start()
 
             reply_text = super().build_reply_content(query, context)
             # logger.info('[WX_Public] reply content: {}'.format(reply_text))
@@ -422,13 +510,14 @@ class WechatServiceAccount(Channel):
                 self.make_image_reply(client, reply_text, context['from_user_id'])
             else:
                 if context.get('msg_type', None) == 'voice':
-                    self.make_voice_reply(client, reply_text, context['from_user_id'])
+                    self.make_voice_reply(client, reply_text, context['from_user_id'], with_text=False)
+                    client.send_text_message(context['from_user_id'], f'[听到：{query}]\r\n{reply_text}')
                 else:
                     client.send_text_message(context['from_user_id'], reply_text)
 
             self.wait_response = False
-            if timer is not None:
-                timer.cancel()
+            # if timer is not None:
+            #     timer.cancel()
 
         except Exception as e:
             import traceback
