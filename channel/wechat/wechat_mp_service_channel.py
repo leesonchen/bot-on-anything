@@ -9,9 +9,75 @@ import requests
 import io
 import edge_tts
 import asyncio
+import string
 
 robot = werobot.WeRoBot(token=channel_conf(const.WECHAT_MP).get('token'))
 thread_pool = ThreadPoolExecutor(max_workers=8)
+
+zh_punctuation_str = '《》【】（）。、‘’“”：；！？·，'   #中文符号
+extended_punctuation = f'{zh_punctuation_str}{string.punctuation}{string.whitespace}'  #中英文符号
+extended_seperator = '。、‘’“”：；！？，\'\":;,.!?'  #中英文分隔符
+
+def is_Chinese(text):
+    # 增加对中英混合的情况，如果大部分内容都是中文，则认为是中文
+    zh_count = 0
+    en_count = 0
+    for ch in text:
+        # print(f'{ch}|{ord(ch)}')
+        if is_en_extended(ch):
+            en_count += 1
+        elif is_zh_extended(ch):
+            zh_count += 1
+        else:
+            # 非中文非英文字符，直接返回False
+            return False
+
+    return zh_count > 0
+
+def is_English(text):
+    for ch in text:
+        if not is_en_extended(ch):
+            return False
+    return True
+
+def is_Japanese(text):
+    for ch in text:
+        if is_jp(ch):
+            return True
+    return False
+
+def is_zh_extended(w):
+    if '\u4e00' <= w <= '\u9fff' or w.isdigit() or w in extended_punctuation:
+        return True
+
+def is_zh(w):
+    if '\u4e00' <= w <= '\u9fff':
+        return True
+
+def is_zh_punctuation(w):
+    if w in zh_punctuation_str:
+        return True
+
+def is_en(w):
+    if 'a'<=w<='z' or 'A'<=w<='Z':
+        return True
+
+def is_en_punctuation(w):
+    if w in string.punctuation:
+        return True
+
+def is_en_extended(w):
+    if is_en(w) or w.isdigit() or w in extended_punctuation:
+        return True
+
+def is_jp(w):
+    if ('\u3040' <= w <= '\u309f') or ('\u30A0' <= w <= '\u30ff'):
+        return True
+
+def is_jp_extended(w): #extended指不满足条件肯定不是日文
+    if ('\u3040' <= w <= '\u309f') or ('\u30A0' <= w <= '\u30ff') or ('\u4e00' <= w <= '\u9fbf') or w.isdigit() or w in extended_punctuation:
+        return True
+
 
 @robot.text
 def handle_text(msg):
@@ -96,8 +162,30 @@ class WechatServiceAccount(Channel):
         print(f"upload_res: {upload_res}, media_id: {media_id}")
         client.send_image_message(user_id, media_id)
 
+    # search keyword in voice_map
+    def searchVoice(self, keyword):
+        for key in self.voice_map.keys():
+            if keyword in key:
+                voice = key + '-' +  self.voice_map[key]
+                return voice
+        return None
+
     def suitableVoice(self, text):
         self.readVoicename()
+
+        if is_Japanese(text):
+            voice =  self.searchVoice('ja-JP')
+            print(f"voice: {voice}")
+            return voice
+        elif is_Chinese(text):
+            voice =  self.searchVoice('zh-CN')
+            print(f"voice: {voice}")
+            return voice
+        elif is_English(text):
+            # voice = 'en-US-AnaNeural'
+            voice =  self.searchVoice('en-US')
+            print(f"voice: {voice}")
+            return voice
 
         from model.openai.chatgpt_model import ChatGPTModel
         robot = ChatGPTModel()
